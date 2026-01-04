@@ -7,6 +7,12 @@ export type ChatModel = 'fast' | 'genius';
 export type RankName = 'Iron' | 'Bronze' | 'Silver' | 'Gold' | 'Platinum' | 'Diamond' | 'Mythic';
 export type RankTier = 'IV' | 'III' | 'II' | 'I';
 
+export interface TimetableEntry {
+  id: string;
+  time: string;
+  activity: string;
+}
+
 export interface ThemeSettings {
   color: ThemeColor;
   isHighContrast: boolean;
@@ -27,6 +33,9 @@ export interface Task {
   createdAt: string;
   completedAt?: string;
   xpValue: number;
+  timeLimitMinutes?: number;
+  startTime?: string;
+  isExpired?: boolean;
   isAiGenerated?: boolean;
   isGeneratingSubTasks?: boolean;
   isClarifying?: boolean;
@@ -97,6 +106,6 @@ export interface ChatMessage {
     type: 'image' | 'video' | 'audio';
     url: string;
     mimeType: string;
-    data?: string; // base64 for re-analysis
+    data?: string; 
   };
 }

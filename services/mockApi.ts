@@ -1,14 +1,15 @@
 
-import { Task, UserProfile, DailyProgress, ChatMessage } from '../types';
+import { Task, UserProfile, DailyProgress, ChatMessage, TimetableEntry } from '../types';
 import { INITIAL_BADGES } from '../components/constants';
 
-const STORAGE_KEY = 'questly_data_v7';
+const STORAGE_KEY = 'questly_data_v8';
 
 interface StorageData {
   tasks: Task[];
   user: UserProfile;
   history: DailyProgress[];
   chatHistory: ChatMessage[];
+  timetable: TimetableEntry[];
 }
 
 const emptyData: StorageData = {
@@ -39,7 +40,8 @@ const emptyData: StorageData = {
     { date: 'Sun', count: 0 }, { date: 'Mon', count: 0 }, { date: 'Tue', count: 0 }, { date: 'Wed', count: 0 },
     { date: 'Thu', count: 0 }, { date: 'Fri', count: 0 }, { date: 'Sat', count: 0 },
   ],
-  chatHistory: []
+  chatHistory: [],
+  timetable: []
 };
 
 export const api = {
@@ -53,13 +55,9 @@ export const api = {
     if (!parsed.user.settings) parsed.user.settings = emptyData.user.settings;
     if (parsed.user.settings.isRankedMode === undefined) parsed.user.settings.isRankedMode = true;
     if (parsed.user.tutorialComplete === undefined) parsed.user.tutorialComplete = false;
-    if (parsed.user.rankXP === undefined) {
-      parsed.user.rankXP = 0;
-      parsed.user.currentRank = 'Iron';
-      parsed.user.currentTier = 'IV';
-    }
     if (!parsed.chatHistory) parsed.chatHistory = [];
     if (!parsed.history) parsed.history = emptyData.history;
+    if (!parsed.timetable) parsed.timetable = [];
     return parsed;
   },
   saveData: (data: StorageData) => {
@@ -73,13 +71,17 @@ export const api = {
     const current = api.getData();
     api.saveData({ ...current, user });
   },
-  updateHistory: (history: DailyProgress[]) => {
+  updateTimetable: (timetable: TimetableEntry[]) => {
     const current = api.getData();
-    api.saveData({ ...current, history });
+    api.saveData({ ...current, timetable });
   },
+  // Added updateChatHistory to resolve the error in AiLabScreen
   updateChatHistory: (chatHistory: ChatMessage[]) => {
     const current = api.getData();
     api.saveData({ ...current, chatHistory });
+  },
+  logout: () => {
+    localStorage.removeItem(STORAGE_KEY);
   },
   syncData: async () => new Promise((resolve) => setTimeout(resolve, 1500))
 };

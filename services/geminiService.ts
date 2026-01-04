@@ -2,10 +2,11 @@
 import { GoogleGenAI, Type, Modality, GenerateContentResponse } from "@google/genai";
 import { ChatModel, PracticeQuestion, MasteryChallenge, SuggestedTask, Task } from "../types";
 
+// Always create a new GoogleGenAI instance right before making an API call to ensure it uses the most up-to-date key.
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const AI_TIMEOUT_MS = 5000; // Strictly 5 seconds per CORE OBJECTIVE
-const FALLBACK_MESSAGE = "Let's keep moving. Focus on the very first action item of your goal right now."; 
+const AI_TIMEOUT_MS = 5000; // CORE OBJECTIVE: Max 5s
+const FALLBACK_MESSAGE = "I couldn't process that fully. Try focusing on the very first step of your goal right now."; 
 
 async function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
   let timeoutId: any;
@@ -17,7 +18,7 @@ async function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
     promise.then(val => {
       clearTimeout(timeoutId);
       return val;
-    }).catch(err => {
+    }).catch(() => {
       clearTimeout(timeoutId);
       return fallback;
     }),
@@ -68,7 +69,7 @@ export const getMasteryChallenge = async (taskTitle: string): Promise<MasteryCha
   const apiCall = async () => {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Quick review for "${taskTitle}". 3 brief questions. Short sentences. No analysis. No emojis.`,
+      contents: `Generate 3 quick review questions for "${taskTitle}". Bullet points. No emojis. No analysis.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -103,7 +104,7 @@ export const getMasteryChallenge = async (taskTitle: string): Promise<MasteryCha
   };
   return withTimeout(apiCall(), { 
     questions: [], 
-    nextQuest: { title: "Next Step", description: "Keep going!", category: "Study" } 
+    nextQuest: { title: "Daily Focus", description: "Stay consistent with your routine.", category: "Study" } 
   });
 };
 
@@ -112,32 +113,24 @@ export const getClarifyingQuestions = async (goal: string): Promise<string[]> =>
   const apiCall = async () => {
     const response = await ai.models.generateContent({
       model: "gemini-flash-lite-latest",
-      contents: `Ask exactly ONE short question to start on this goal: "${goal}". No emojis.`,
+      contents: `Ask exactly ONE short clarifying question for the goal: "${goal}". No emojis.`,
       config: {
         responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: { type: Type.STRING }
-        }
+        responseSchema: { type: Type.ARRAY, items: { type: Type.STRING } }
       }
     });
     const res = JSON.parse(response.text || "[]");
-    return res.slice(0, 1); // Strictly only 1 question allowed
+    return res.slice(0, 1); // Strictly one question
   };
-  return withTimeout(apiCall(), ["What's the first step you want to focus on?"]);
+  return withTimeout(apiCall(), ["What is the specific outcome you want to see?"]);
 };
 
 export const getAITaskSuggestions = async (goal: string, answers?: Record<string, string>): Promise<SuggestedTask[]> => {
   const ai = getAI();
-  const prompt = `Goal: "${goal}". Context: ${JSON.stringify(answers || {})}. 
-  Generate exactly 5 short, actionable sub-tasks immediately. 
-  No deep analysis. Response under 3 seconds. 
-  JSON array of 5 objects with title, description, and category.`;
-
   const apiCall = async () => {
     const response = await ai.models.generateContent({
       model: "gemini-flash-lite-latest",
-      contents: prompt,
+      contents: `Goal: "${goal}". Context: ${JSON.stringify(answers || {})}. Generate EXACTLY 5 short actionable sub-tasks. No analysis. JSON array only.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -157,11 +150,11 @@ export const getAITaskSuggestions = async (goal: string, answers?: Record<string
     return JSON.parse(response.text || "[]").slice(0, 5);
   };
   return withTimeout(apiCall(), [
-    { title: "Define scope", description: "List exactly what you need to do.", category: "Study" },
-    { title: "Set environment", description: "Get your workspace ready.", category: "Study" },
-    { title: "First 15 minutes", description: "Start the timer and begin.", category: "Study" },
-    { title: "Review findings", description: "Check what you learned.", category: "Study" },
-    { title: "Plan next session", description: "Prepare for the next step.", category: "Study" }
+    { title: "Define first step", description: "Identify one small action.", category: "Study" },
+    { title: "Remove distractions", description: "Clear your workspace.", category: "Study" },
+    { title: "Start 10min timer", description: "Begin working now.", category: "Study" },
+    { title: "Note progress", description: "Write down what you did.", category: "Study" },
+    { title: "Plan tomorrow", description: "Set the next goal.", category: "Study" }
   ]);
 };
 
@@ -174,31 +167,43 @@ export const chatWithRudhh = async (
   isThinkingMode: boolean = false
 ): Promise<{ text: string, modelName: string, groundingChunks?: any[], thinking?: string }> => {
   const ai = getAI();
-  const needsSearch = /latest|news|current|who is/i.test(input);
-  const modelName = needsSearch ? 'gemini-3-flash-preview' : 'gemini-flash-lite-latest';
+  const needsSearch = /latest|news|current|who is|weather/i.test(input);
   
-  const systemInstruction = `You are Dr. Rudhh, a proactive mentor. 
-  Rules:
-  - Max 120 words.
-  - Short sentences, bullets.
-  - Never say "I hit a snag" or "Analyzing".
-  - If unsure, suggest one next action for their goals: ${tasks.map(t => t.title).join(", ")}.
-  - No emojis.`;
+  // Select appropriate model based on task complexity and search needs.
+  let modelName = 'gemini-flash-lite-latest';
+  if (needsSearch) {
+    modelName = 'gemini-3-flash-preview';
+  } else if (isThinkingMode) {
+    modelName = 'gemini-3-pro-preview';
+  }
+  
+  const systemInstruction = `You are Dr. Rudhh, a mentor. 
+  Your personality is: ${personality}.
+  Max 120 words. No repetition. Bullet points for lists. 
+  NEVER say "I hit a snag" or "Analyzing". 
+  If an error occurs, suggest focusing on: ${tasks.length ? tasks[0].title : 'a new quest'}. 
+  No emojis.`;
 
   try {
     const response = await ai.models.generateContent({
       model: modelName,
       contents: [...history, { role: 'user', parts: [{ text: input }] }],
-      config: { systemInstruction, tools: needsSearch ? [{ googleSearch: {} }] : [] }
+      config: { 
+        systemInstruction, 
+        tools: needsSearch ? [{ googleSearch: {} }] : [],
+        // If thinking mode is active, set thinking budget for supported models.
+        ...(isThinkingMode && modelName === 'gemini-3-pro-preview' ? { thinkingConfig: { thinkingBudget: 16000 } } : {})
+      }
     });
 
     return {
       text: response.text || FALLBACK_MESSAGE,
       modelName,
       groundingChunks: response.candidates?.[0]?.groundingMetadata?.groundingChunks,
+      // Extract thinking process if present in the response parts.
       thinking: response.candidates?.[0]?.content?.parts?.find(p => p.thought)?.thought
     };
-  } catch (err) {
+  } catch {
     return { text: FALLBACK_MESSAGE, modelName };
   }
 };
@@ -211,13 +216,13 @@ export const analyzeMedia = async (base64: string, mimeType: string, prompt: str
       contents: {
         parts: [
           { inlineData: { data: base64, mimeType } },
-          { text: prompt + " (Briefly, no analysis. No emojis.)" }
+          { text: prompt + " (Brief reply only. No emojis.)" }
         ]
       }
     });
-    return response.text || "I've reviewed this. Let's move to your next task.";
-  } catch (err) {
-    return "I couldn't process the media. Let's stick to our text goals for now.";
+    return response.text || "Reviewed. Let's continue your mission.";
+  } catch {
+    return "Media processing skipped. Focus on your text quests.";
   }
 };
 
@@ -242,7 +247,7 @@ export const speakResponse = async (text: string) => {
       source.connect(audioCtx.destination);
       source.start();
     }
-  } catch (err) {}
+  } catch {}
 };
 
 export const getProgressNudge = async (completed: number, total: number): Promise<string> => {
@@ -250,9 +255,9 @@ export const getProgressNudge = async (completed: number, total: number): Promis
   const apiCall = async () => {
     const response = await ai.models.generateContent({
       model: "gemini-flash-lite-latest",
-      contents: `Status: ${completed}/${total} done. Give a one-sentence nudge. No emojis.`
+      contents: `Progress: ${completed}/${total}. One short sentence nudge. No emojis.`
     });
-    return response.text || "Keep the momentum going.";
+    return response.text || "Every action gets you closer to mastery.";
   };
-  return withTimeout(apiCall(), "Every small step leads to mastery.");
+  return withTimeout(apiCall(), "Focus on your next victory.");
 };
