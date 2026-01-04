@@ -26,7 +26,7 @@ const AiLabScreen: React.FC<AiLabScreenProps> = ({ user, tasks }) => {
       setMessages([{ 
         id: '1', 
         role: 'model', 
-        text: `Hi ${user.name}! I'm here to help. What's on your mind today?` 
+        text: `Hi ${user.name}! I'm Dr. Rudhh. How can I help you progress right now?` 
       }]);
     }
   }, []);
@@ -35,7 +35,7 @@ const AiLabScreen: React.FC<AiLabScreenProps> = ({ user, tasks }) => {
     if (messages.length > 0) {
       api.updateChatHistory(messages);
     }
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'auto' });
   }, [messages]);
 
   const handleSend = async () => {
@@ -46,7 +46,7 @@ const AiLabScreen: React.FC<AiLabScreenProps> = ({ user, tasks }) => {
     setIsLoading(true);
 
     try {
-      const contextHistory = messages.slice(-10).map(m => ({
+      const contextHistory = messages.slice(-3).map(m => ({
         role: m.role,
         parts: [{ text: m.text }]
       }));
@@ -70,11 +70,10 @@ const AiLabScreen: React.FC<AiLabScreenProps> = ({ user, tasks }) => {
       };
       setMessages(prev => [...prev, botMsg]);
     } catch (err) {
-      console.error(err);
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: 'model',
-        text: "I'm sorry, I hit a snag. Let's try that again."
+        text: "I couldn't process that. Try focusing on your current focus quest."
       }]);
     } finally {
       setIsLoading(false);
@@ -85,41 +84,22 @@ const AiLabScreen: React.FC<AiLabScreenProps> = ({ user, tasks }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
-    const isImage = file.type.startsWith('image/');
-    const isVideo = file.type.startsWith('video/');
-    
-    if (!isImage && !isVideo) {
-      alert("Please upload an image or video.");
-      return;
-    }
-
     setIsLoading(true);
     const reader = new FileReader();
     reader.onload = async () => {
       const base64 = (reader.result as string).split(',')[1];
-      const typeLabel = isImage ? 'image' : 'video';
       try {
-        const response = await gemini.analyzeMedia(
-          base64, 
-          file.type, 
-          input || `Could you take a look at this ${typeLabel} and tell me what you think?`
-        );
+        const response = await gemini.analyzeMedia(base64, file.type, "Analyze this briefly.");
         setMessages(prev => [...prev, { 
           id: Date.now().toString(), 
           role: 'model', 
           text: response,
-          media: { 
-            type: typeLabel as any, 
-            url: reader.result as string, 
-            mimeType: file.type,
-            data: base64
-          }
+          media: { type: file.type.startsWith('image/') ? 'image' : 'video', url: reader.result as string, mimeType: file.type }
         }]);
       } catch (e) {
-        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: "I couldn't quite analyze that. Mind trying again?" }]);
+        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: "I can't see that clearly. Let's keep moving with our tasks." }]);
       } finally {
         setIsLoading(false);
-        setInput('');
       }
     };
     reader.readAsDataURL(file);
@@ -127,91 +107,55 @@ const AiLabScreen: React.FC<AiLabScreenProps> = ({ user, tasks }) => {
 
   return (
     <div className="flex flex-col h-[calc(100vh-180px)] animate-fadeIn">
-      <div className="flex flex-col gap-2 mb-4">
-        <div className="flex items-center justify-between bg-slate-900/50 p-3 px-4 rounded-2xl border border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 gradient-bg rounded-xl flex items-center justify-center font-bold">DR</div>
-            <div>
-              <span className="font-bold text-xs text-white block">Dr. Rudhh</span>
-              <span className="text-[10px] flex items-center gap-1 text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                Always here to help
-              </span>
-            </div>
-          </div>
-          <div className="flex gap-2">
-             <button 
-               onClick={() => setIsThinkingMode(!isThinkingMode)}
-               className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all border ${isThinkingMode ? 'bg-violet-600/20 text-violet-400 border-violet-500/50' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
-             >
-               Deep Think
-             </button>
-          </div>
+      <div className="flex items-center justify-between bg-slate-900/50 p-3 px-4 rounded-2xl border border-slate-800 mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 gradient-bg rounded-xl flex items-center justify-center font-bold">DR</div>
+          <span className="font-bold text-xs text-white">Dr. Rudhh</span>
         </div>
+        <button 
+          onClick={() => setIsThinkingMode(!isThinkingMode)}
+          className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition-all ${isThinkingMode ? 'bg-violet-600/20 text-violet-400 border-violet-500/50' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
+        >
+          {isThinkingMode ? 'Logic Max' : 'Fast Mode'}
+        </button>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-6 pr-2 no-scrollbar pb-4 px-1">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-6 pr-2 no-scrollbar px-1">
         {messages.map((m) => (
-          <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-fadeIn`}>
-            <div className={`max-w-[90%] p-4 rounded-2xl ${
-              m.role === 'user' 
-                ? 'bg-violet-600 text-white rounded-br-none' 
-                : 'glass-card border-slate-700/50 rounded-bl-none'
-            }`}>
-              {m.thinkingProcess && (
-                <details className="mb-3 text-[10px] bg-slate-900/40 p-2 rounded-xl opacity-60">
-                   <summary className="font-bold cursor-pointer">View my thoughts</summary>
-                   <div className="mt-2 text-slate-400 whitespace-pre-wrap font-mono italic">{m.thinkingProcess}</div>
-                </details>
-              )}
+          <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+            <div className={`max-w-[90%] p-4 rounded-2xl ${m.role === 'user' ? 'bg-violet-600 text-white rounded-br-none' : 'glass-card border-slate-700/50 rounded-bl-none'}`}>
               <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.text}</p>
-              {m.groundingChunks && m.groundingChunks.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
-                  <p className="text-[10px] font-bold text-slate-500">I found these sources for you:</p>
-                  <div className="flex flex-col gap-2">
-                    {m.groundingChunks.map((chunk, i) => chunk.web && (
-                      <a key={i} href={chunk.web.uri} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-2 bg-blue-400/5 p-2 rounded-xl border border-blue-400/20">
-                        <span className="truncate flex-1">{chunk.web.title || "Reference link"}</span>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
               {m.media && (
                 <div className="mt-3 rounded-2xl overflow-hidden border border-white/10">
-                  {m.media.type === 'image' && <img src={m.media.url} className="w-full" />}
-                  {m.media.type === 'video' && <video src={m.media.url} controls className="w-full" />}
+                  {m.media.type === 'image' ? <img src={m.media.url} className="w-full" /> : <video src={m.media.url} controls className="w-full" />}
                 </div>
               )}
               {m.role === 'model' && (
-                <div className="flex justify-between items-center mt-4 pt-2 border-t border-white/5">
-                  <button onClick={() => gemini.speakResponse(m.text)} className="text-[10px] font-bold text-violet-400 hover:text-violet-300">Listen</button>
-                  <span className="text-[8px] text-slate-600 uppercase font-bold tracking-widest">Sent by Dr. Rudhh</span>
-                </div>
+                <button onClick={() => gemini.speakResponse(m.text)} className="mt-3 text-[10px] font-bold text-violet-400 block uppercase tracking-widest">Listen</button>
               )}
             </div>
           </div>
         ))}
         {isLoading && (
-          <div className="flex justify-start animate-pulse">
-            <div className="glass-card p-4 px-6 rounded-2xl rounded-bl-none flex items-center gap-2">
-              <span className="text-xs font-medium text-slate-500">Dr. Rudhh is thinking...</span>
+          <div className="flex justify-start">
+            <div className="glass-card p-3 px-5 rounded-2xl text-[10px] font-bold text-slate-500 uppercase tracking-widest animate-pulse">
+              Replying...
             </div>
           </div>
         )}
       </div>
 
       <div className="mt-4 flex items-center gap-2 bg-slate-950/40 p-2 rounded-2xl border border-slate-800">
-        <button onClick={() => fileInputRef.current?.click()} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-xl text-slate-400" title="Upload something">📎</button>
+        <button onClick={() => fileInputRef.current?.click()} className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-xl text-slate-400">📎</button>
         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*,video/*" />
         <input 
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-          placeholder="Ask Dr. Rudhh anything..."
-          className="flex-1 bg-transparent border-none p-3 text-sm focus:outline-none placeholder:text-slate-600"
+          placeholder="What's next?"
+          className="flex-1 bg-transparent border-none p-3 text-sm focus:outline-none"
         />
-        <button onClick={handleSend} disabled={isLoading || !input.trim()} className="w-10 h-10 flex items-center justify-center gradient-bg rounded-xl font-bold disabled:opacity-30">Go</button>
+        <button onClick={handleSend} disabled={isLoading || !input.trim()} className="w-10 h-10 flex items-center justify-center gradient-bg rounded-xl font-bold disabled:opacity-30">➜</button>
       </div>
     </div>
   );
