@@ -1,0 +1,8 @@
+{
+  "name": "Copy of Copy of Questly",
+  "description": "A gamified student productivity app to set goals, track progress with streaks, and get AI-powered task breakdowns.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
